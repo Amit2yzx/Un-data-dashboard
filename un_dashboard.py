@@ -499,85 +499,340 @@ with tab2:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
-    st.markdown("<h2 class='sub-header'>Country Analysis</h2>", unsafe_allow_html=True)
+    st.markdown("<div class='section'>", unsafe_allow_html=True)
+    st.markdown("<h2 class='sub-header'>Voting Patterns</h2>", unsafe_allow_html=True)
 
-    # Select countries for analysis
-    major_countries = ['UNITED STATES', 'RUSSIAN FEDERATION', 'CHINA', 'UNITED KINGDOM', 'FRANCE']
+    # Average votes per resolution
+    st.markdown("### Average Votes per Resolution")
+    vote_columns = ['YES COUNT', 'NO COUNT', 'ABSENT COUNT']
+    vote_data = filtered_df[vote_columns].mean().reset_index()
+    vote_data.columns = ['Vote Type', 'Average Count']
 
-    # Allow user to select countries
-    selected_countries = st.multiselect(
-        "Select Countries to Analyze",
-        options=[col for col in df.columns if col not in ['Council', 'Date', 'Title', 'Resolution', 'TOTAL VOTES', 'NO-VOTE COUNT', 'ABSENT COUNT', 'NO COUNT', 'YES COUNT', 'Link', 'token', 'Year', 'Topic']],
-        default=major_countries
+    fig = px.bar(
+        vote_data,
+        x='Vote Type',
+        y='Average Count',
+        color='Vote Type',
+        title='Average Votes per Resolution',
+        color_discrete_map={
+            'YES COUNT': color_schemes['vote_types']['Yes'],
+            'NO COUNT': color_schemes['vote_types']['No'],
+            'ABSENT COUNT': color_schemes['vote_types']['Absent']
+        }
+    )
+    fig.update_layout(
+        xaxis_title='Vote Type',
+        yaxis_title='Average Count',
+        height=450
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Vote distribution
+    st.markdown("### Overall Vote Distribution")
+    vote_dist = pd.DataFrame({
+        'Vote Type': ['Yes', 'No', 'Absent'],
+        'Average Percentage': [
+            filtered_df['YES COUNT'].sum() / filtered_df['TOTAL VOTES'].sum() * 100,
+            filtered_df['NO COUNT'].sum() / filtered_df['TOTAL VOTES'].sum() * 100,
+            filtered_df['ABSENT COUNT'].sum() / filtered_df['TOTAL VOTES'].sum() * 100
+        ]
+    })
+
+    fig = px.pie(
+        vote_dist,
+        values='Average Percentage',
+        names='Vote Type',
+        title='Overall Vote Distribution',
+        color='Vote Type',
+        color_discrete_map={
+            'Yes': color_schemes['vote_types']['Yes'],
+            'No': color_schemes['vote_types']['No'],
+            'Absent': color_schemes['vote_types']['Absent']
+        },
+        hole=0.4
+    )
+    fig.update_layout(
+        height=500,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.1,
+            xanchor="center",
+            x=0.5
+        )
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Vote trends over time
+    st.markdown("### Voting Trends Over Time")
+
+    # Group by year and calculate vote percentages
+    yearly_votes = filtered_df.groupby('Year')[['YES COUNT', 'NO COUNT', 'ABSENT COUNT']].sum().reset_index()
+    yearly_votes['Total'] = yearly_votes['YES COUNT'] + yearly_votes['NO COUNT'] + yearly_votes['ABSENT COUNT']
+    yearly_votes['Yes %'] = yearly_votes['YES COUNT'] / yearly_votes['Total'] * 100
+    yearly_votes['No %'] = yearly_votes['NO COUNT'] / yearly_votes['Total'] * 100
+    yearly_votes['Absent %'] = yearly_votes['ABSENT COUNT'] / yearly_votes['Total'] * 100
+
+    # Melt for plotting
+    yearly_votes_melted = pd.melt(
+        yearly_votes,
+        id_vars=['Year'],
+        value_vars=['Yes %', 'No %', 'Absent %'],
+        var_name='Vote Type',
+        value_name='Percentage'
     )
 
-    if selected_countries:
-        # Voting patterns for selected countries
-        st.markdown("### Voting Patterns by Country")
+    fig = px.line(
+        yearly_votes_melted,
+        x='Year',
+        y='Percentage',
+        color='Vote Type',
+        title='Voting Trends Over Time',
+        line_shape='spline',
+        color_discrete_map={
+            'Yes %': color_schemes['vote_types']['Yes'],
+            'No %': color_schemes['vote_types']['No'],
+            'Absent %': color_schemes['vote_types']['Absent']
+        }
+    )
+    fig.update_layout(
+        xaxis_title='Year',
+        yaxis_title='Percentage of Votes',
+        height=500,
+        yaxis=dict(range=[0, 100])
+    )
+    fig.update_traces(line=dict(width=3))
+    st.plotly_chart(fig, use_container_width=True)
 
-        # Create subplots
-        fig = make_subplots(rows=len(selected_countries), cols=1,
-                           subplot_titles=[f"Voting Pattern: {country}" for country in selected_countries],
-                           vertical_spacing=0.05)
+    # Add insights about voting patterns
+    st.markdown("<div class='insight-box'>", unsafe_allow_html=True)
+    st.markdown("### Key Insights on Voting Patterns")
 
-        for i, country in enumerate(selected_countries, 1):
-            vote_counts = filtered_df[country].value_counts().reset_index()
-            vote_counts.columns = ['Vote', 'Count']
+    # Calculate some insights
+    most_yes_topic = filtered_df.groupby('Topic')[['YES COUNT']].sum().reset_index()
+    most_yes_topic['Total Votes'] = filtered_df.groupby('Topic')[['TOTAL VOTES']].sum().reset_index()['TOTAL VOTES']
+    most_yes_topic['Yes %'] = most_yes_topic['YES COUNT'] / most_yes_topic['Total Votes'] * 100
+    most_yes_topic = most_yes_topic.sort_values('Yes %', ascending=False).iloc[0]
 
-            fig.add_trace(
-                go.Bar(x=vote_counts['Vote'], y=vote_counts['Count'], name=country),
-                row=i, col=1
-            )
+    most_no_topic = filtered_df.groupby('Topic')[['NO COUNT']].sum().reset_index()
+    most_no_topic['Total Votes'] = filtered_df.groupby('Topic')[['TOTAL VOTES']].sum().reset_index()['TOTAL VOTES']
+    most_no_topic['No %'] = most_no_topic['NO COUNT'] / most_no_topic['Total Votes'] * 100
+    most_no_topic = most_no_topic.sort_values('No %', ascending=False).iloc[0]
 
-        fig.update_layout(height=300*len(selected_countries), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+    st.markdown(f"- Resolutions on **{most_yes_topic['Topic']}** receive the highest percentage of YES votes ({most_yes_topic['Yes %']:.1f}%)")
+    st.markdown(f"- Resolutions on **{most_no_topic['Topic']}** receive the highest percentage of NO votes ({most_no_topic['No %']:.1f}%)")
 
-        # Agreement analysis
-        if len(selected_countries) > 1:
-            st.markdown("### Voting Agreement Between Countries")
+    # Find year with highest consensus
+    yearly_consensus = yearly_votes.copy()
+    yearly_consensus['Consensus'] = yearly_consensus['Yes %']
+    highest_consensus_year = yearly_consensus.sort_values('Consensus', ascending=False).iloc[0]
 
-            # Function to calculate agreement percentage
-            @st.cache_data
-            def calculate_agreement(country1, country2, data):
-                # Filter rows where both countries have valid votes (not NaN)
-                valid_votes = data.dropna(subset=[country1, country2])
+    st.markdown(f"- The year **{int(highest_consensus_year['Year'])}** had the highest level of consensus with {highest_consensus_year['Yes %']:.1f}% YES votes")
 
-                # Count agreements
-                agreements = (valid_votes[country1] == valid_votes[country2]).sum()
-                total = len(valid_votes)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-                if total > 0:
-                    return (agreements / total) * 100
-                else:
-                    return 0
-
-            # Create agreement matrix
-            agreement_data = []
-            for country1 in selected_countries:
-                for country2 in selected_countries:
-                    if country1 != country2:
-                        agreement = calculate_agreement(country1, country2, filtered_df)
-                        agreement_data.append({
-                            'Country 1': country1,
-                            'Country 2': country2,
-                            'Agreement (%)': agreement
-                        })
-
-            agreement_df = pd.DataFrame(agreement_data)
-
-            # Create heatmap
-            agreement_matrix = agreement_df.pivot(index='Country 1', columns='Country 2', values='Agreement (%)')
-
-            fig = px.imshow(
-                agreement_matrix,
-                text_auto='.1f',
-                color_continuous_scale='YlGnBu',
-                title='Voting Agreement Between Countries (%)'
-            )
-            fig.update_layout(height=500)
-            st.plotly_chart(fig, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with tab4:
+    st.markdown("<div class='section'>", unsafe_allow_html=True)
+    st.markdown("<h2 class='sub-header'>Country Groups Analysis</h2>", unsafe_allow_html=True)
+
+    # Filter by selected country groups
+    if selected_groups:
+        filtered_by_group_df = filtered_df[filtered_df['Country_Group'].isin(selected_groups)]
+    else:
+        filtered_by_group_df = filtered_df
+
+    # Count resolutions by country group
+    st.markdown("### Voting Patterns by Country Group")
+
+    # Create a dataframe to analyze voting patterns by country group
+    country_columns = [col for col in df.columns if col not in ['Council', 'Date', 'Title', 'Resolution', 'TOTAL VOTES', 'NO-VOTE COUNT', 'ABSENT COUNT', 'NO COUNT', 'YES COUNT', 'Link', 'token', 'Year', 'Topic', 'Country_Group']]
+
+    # Get vote counts by country group
+    vote_by_group = {}
+
+    for group in selected_groups:
+        # Get countries in this group
+        group_countries = [country for country in country_columns
+                          if country in filtered_by_group_df.columns and
+                          any(filtered_by_group_df[filtered_by_group_df['Country_Group'] == group][country].notna())]
+
+        if not group_countries:
+            continue
+
+        # Initialize vote counts
+        vote_counts = {'Y': 0, 'N': 0, 'A': 0, 'X': 0}
+        total_votes = 0
+
+        # Count votes for each country in the group
+        for country in group_countries:
+            country_votes = filtered_by_group_df[country].value_counts()
+            for vote_type in vote_counts.keys():
+                if vote_type in country_votes.index:
+                    vote_counts[vote_type] += country_votes[vote_type]
+                    total_votes += country_votes[vote_type]
+
+        # Calculate percentages
+        vote_percentages = {}
+        for vote_type, count in vote_counts.items():
+            if total_votes > 0:
+                vote_percentages[vote_type] = (count / total_votes) * 100
+            else:
+                vote_percentages[vote_type] = 0
+
+        vote_by_group[group] = vote_percentages
+
+    # Create dataframe for visualization
+    vote_group_data = []
+    for group, votes in vote_by_group.items():
+        for vote_type, percentage in votes.items():
+            vote_group_data.append({
+                'Country Group': group,
+                'Vote Type': vote_type,
+                'Percentage': percentage
+            })
+
+    vote_group_df = pd.DataFrame(vote_group_data)
+
+    # Create stacked bar chart
+    if not vote_group_df.empty:
+        fig = px.bar(
+            vote_group_df,
+            x='Country Group',
+            y='Percentage',
+            color='Vote Type',
+            title='Voting Patterns by Country Group',
+            color_discrete_map=color_schemes['vote_types'],
+            barmode='stack'
+        )
+
+        fig.update_layout(
+            xaxis_title='Country Group',
+            yaxis_title='Percentage of Votes',
+            height=500,
+            yaxis=dict(range=[0, 100])
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Add explanation of vote types
+        st.markdown("""
+        **Vote Types:**
+        - **Y**: Yes
+        - **N**: No
+        - **A**: Abstain
+        - **X**: Absent
+        """)
+    else:
+        st.warning("No data available for the selected country groups.")
+
+    # Agreement between country groups
+    st.markdown("### Agreement Between Country Groups")
+
+    # Function to calculate agreement between groups
+    def calculate_group_agreement(group1, group2, data):
+        # Get countries in each group
+        group1_countries = [country for country in country_columns
+                           if country in data.columns and
+                           any(data[data['Country_Group'] == group1][country].notna())]
+
+        group2_countries = [country for country in country_columns
+                           if country in data.columns and
+                           any(data[data['Country_Group'] == group2][country].notna())]
+
+        if not group1_countries or not group2_countries:
+            return 0
+
+        # Calculate average agreement between all country pairs
+        agreements = []
+        for country1 in group1_countries:
+            for country2 in group2_countries:
+                agreement = calculate_agreement(country1, country2, data)
+                agreements.append(agreement)
+
+        if agreements:
+            return sum(agreements) / len(agreements)
+        else:
+            return 0
+
+    # Create agreement matrix between groups
+    group_agreement_matrix = pd.DataFrame(index=selected_groups, columns=selected_groups)
+
+    for group1 in selected_groups:
+        for group2 in selected_groups:
+            group_agreement_matrix.loc[group1, group2] = calculate_group_agreement(group1, group2, filtered_by_group_df)
+
+    # Convert to numeric values
+    group_agreement_matrix = group_agreement_matrix.astype(float)
+
+    # Create heatmap
+    fig = px.imshow(
+        group_agreement_matrix,
+        text_auto='.1f',
+        color_continuous_scale='RdBu_r',
+        color_continuous_midpoint=50,
+        title='Voting Agreement Between Country Groups (%)',
+        labels=dict(x="Country Group", y="Country Group", color="Agreement %")
+    )
+
+    fig.update_layout(
+        height=600,
+        xaxis=dict(tickangle=45),
+        yaxis=dict(tickangle=0)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Add insights about country groups
+    st.markdown("<div class='insight-box'>", unsafe_allow_html=True)
+    st.markdown("### Key Insights on Country Groups")
+
+    # Find highest and lowest agreement between groups
+    max_agreement = 0
+    max_pair = None
+    min_agreement = 100
+    min_pair = None
+
+    for i in range(len(group_agreement_matrix.index)):
+        for j in range(len(group_agreement_matrix.columns)):
+            if i != j:  # Skip diagonal (self-agreement)
+                group1 = group_agreement_matrix.index[i]
+                group2 = group_agreement_matrix.columns[j]
+                agreement = group_agreement_matrix.iloc[i, j]
+
+                if agreement > max_agreement:
+                    max_agreement = agreement
+                    max_pair = (group1, group2)
+
+                if agreement < min_agreement and agreement > 0:
+                    min_agreement = agreement
+                    min_pair = (group1, group2)
+
+    if max_pair:
+        st.markdown(f"- Highest agreement: **{max_pair[0]}** and **{max_pair[1]}** agree on {max_agreement:.1f}% of votes")
+
+    if min_pair:
+        st.markdown(f"- Lowest agreement: **{min_pair[0]}** and **{min_pair[1]}** agree on only {min_agreement:.1f}% of votes")
+
+    # Find group with most Yes votes
+    most_yes_group = None
+    most_yes_percentage = 0
+
+    for group, votes in vote_by_group.items():
+        if 'Y' in votes and votes['Y'] > most_yes_percentage:
+            most_yes_percentage = votes['Y']
+            most_yes_group = group
+
+    if most_yes_group:
+        st.markdown(f"- **{most_yes_group}** has the highest percentage of YES votes ({most_yes_percentage:.1f}%)")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with tab5:
+    st.markdown("<div class='section'>", unsafe_allow_html=True)
     st.markdown("<h2 class='sub-header'>Topic Analysis</h2>", unsafe_allow_html=True)
 
     # Resolutions by topic
@@ -585,29 +840,23 @@ with tab4:
     topic_counts = filtered_df['Topic'].value_counts().reset_index()
     topic_counts.columns = ['Topic', 'Count']
 
+    # Sort by count
+    topic_counts = topic_counts.sort_values('Count', ascending=False)
+
     fig = px.bar(
         topic_counts,
         x='Topic',
         y='Count',
         color='Topic',
-        title='Number of Resolutions by Topic'
+        title='Number of Resolutions by Topic',
+        color_discrete_sequence=color_schemes['main_palette']
     )
-    fig.update_layout(xaxis_title='Topic', yaxis_title='Number of Resolutions')
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Topics over time
-    st.markdown("### Topics Over Time")
-    topic_year = filtered_df.groupby(['Year', 'Topic']).size().reset_index(name='Count')
-
-    fig = px.line(
-        topic_year,
-        x='Year',
-        y='Count',
-        color='Topic',
-        markers=True,
-        title='Topics Over Time'
+    fig.update_layout(
+        xaxis_title='Topic',
+        yaxis_title='Number of Resolutions',
+        height=500,
+        xaxis={'categoryorder':'total descending'}
     )
-    fig.update_layout(xaxis_title='Year', yaxis_title='Number of Resolutions')
     st.plotly_chart(fig, use_container_width=True)
 
     # Vote distribution by topic
@@ -625,17 +874,104 @@ with tab4:
         value_name='Average Count'
     )
 
+    # Sort by YES COUNT
+    topic_order = topic_votes.sort_values('YES COUNT', ascending=False)['Topic'].tolist()
+    topic_votes_melted['Topic'] = pd.Categorical(topic_votes_melted['Topic'], categories=topic_order, ordered=True)
+
     fig = px.bar(
-        topic_votes_melted,
+        topic_votes_melted.sort_values('Topic'),
         x='Topic',
         y='Average Count',
         color='Vote Type',
         barmode='group',
-        title='Average Votes by Topic'
+        title='Average Votes by Topic',
+        color_discrete_map={
+            'YES COUNT': color_schemes['vote_types']['Yes'],
+            'NO COUNT': color_schemes['vote_types']['No'],
+            'ABSENT COUNT': color_schemes['vote_types']['Absent']
+        }
     )
-    fig.update_layout(xaxis_title='Topic', yaxis_title='Average Count')
+    fig.update_layout(
+        xaxis_title='Topic',
+        yaxis_title='Average Count',
+        height=500,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.3,
+            xanchor="center",
+            x=0.5
+        )
+    )
     st.plotly_chart(fig, use_container_width=True)
+
+    # Controversial topics
+    st.markdown("### Most Controversial Topics")
+
+    # Calculate controversy score (ratio of NO to YES votes)
+    topic_controversy = filtered_df.groupby('Topic')[['YES COUNT', 'NO COUNT']].sum().reset_index()
+    topic_controversy['Controversy Score'] = topic_controversy['NO COUNT'] / (topic_controversy['YES COUNT'] + 1)  # Add 1 to avoid division by zero
+
+    # Filter to topics with sufficient votes
+    min_votes = 10
+    topic_controversy = topic_controversy[topic_controversy['YES COUNT'] + topic_controversy['NO COUNT'] > min_votes]
+
+    # Sort by controversy score
+    topic_controversy = topic_controversy.sort_values('Controversy Score', ascending=False).head(10)
+
+    fig = px.bar(
+        topic_controversy,
+        x='Topic',
+        y='Controversy Score',
+        color='Topic',
+        title='Most Controversial Topics (Higher Score = More Controversial)',
+        color_discrete_sequence=px.colors.sequential.Reds_r
+    )
+    fig.update_layout(
+        xaxis_title='Topic',
+        yaxis_title='Controversy Score',
+        height=500,
+        xaxis={'categoryorder':'total descending'}
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Add insights about topics
+    st.markdown("<div class='insight-box'>", unsafe_allow_html=True)
+    st.markdown("### Key Insights on Topics")
+
+    # Most common topic
+    most_common_topic = topic_counts.iloc[0]['Topic']
+    most_common_count = topic_counts.iloc[0]['Count']
+
+    # Most controversial topic
+    most_controversial = topic_controversy.iloc[0]['Topic']
+    controversy_score = topic_controversy.iloc[0]['Controversy Score']
+
+    # Topic with highest consensus
+    topic_consensus = filtered_df.groupby('Topic')[['YES COUNT', 'TOTAL VOTES']].sum().reset_index()
+    topic_consensus['Consensus %'] = (topic_consensus['YES COUNT'] / topic_consensus['TOTAL VOTES']) * 100
+    topic_consensus = topic_consensus[topic_consensus['TOTAL VOTES'] > min_votes]
+    highest_consensus = topic_consensus.sort_values('Consensus %', ascending=False).iloc[0]
+
+    st.markdown(f"- **{most_common_topic}** is the most common topic with {most_common_count} resolutions")
+    st.markdown(f"- **{most_controversial}** is the most controversial topic with a controversy score of {controversy_score:.2f}")
+    st.markdown(f"- **{highest_consensus['Topic']}** has the highest consensus with {highest_consensus['Consensus %']:.1f}% YES votes")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")
-st.markdown("Dashboard created with Streamlit for UN Voting Data Analysis")
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.markdown(
+        """
+        <div style="text-align: center; color: #666; padding: 20px;">
+            <p>Dashboard created for UN Voting Data Analysis</p>
+            <p>Data source: United Nations Digital Library</p>
+            <p>© 2023 - All rights reserved</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
